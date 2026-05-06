@@ -2,129 +2,186 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Giao Diện Chat & Gửi File Mã Hóa</title>
+    <title>Giao Diện Chat Bảo Mật E2EE</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f6f9; display: flex; justify-content: center; padding: 30px; }
-        .chat-area { width: 500px; background: white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 20px; }
-        #box { border: 1px solid #ddd; height: 350px; overflow-y: auto; padding: 10px; margin-bottom: 15px; background: #fff; border-radius: 4px; display: flex; flex-direction: column; }
-        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; width: fit-content; max-width: 70%; word-break: break-all; }
+        body { font-family: Arial, sans-serif; background: #7daddb56; display: flex; justify-content: center; padding: 50px; }
+        .container { position: relative; display: flex; gap: 30px; }
+        .config-panel { background: #ffffff4f; padding: 15px; border-radius: 19px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .chat-area { width: 450px; background: white; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 20px; }
+        #box { border: 1px solid #ddd; height: 320px; overflow-y: auto; padding: 10px; margin-bottom: 15px; border-radius: 4px; display: flex; flex-direction: column; }
+        
+        .msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; width: fit-content; max-width: 75%; word-break: break-all; }
         .incoming { background: #e2e8f0; align-self: flex-start; }
         .outgoing { background: #3182ce; color: white; align-self: flex-end; }
+        
         .input-group { display: flex; flex-direction: column; gap: 10px; }
-        .action-row { display: flex; gap: 10px; }
+        .row { display: flex; gap: 10px; }
         input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 10px 15px; background: #3182ce; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .file-label { padding: 10px; background: #e2e8f0; border-radius: 4px; cursor: pointer; text-align: center; font-size: 14px; }
+        .file-label { padding: 10px; background: #e2e8f0; border-radius: 4px; cursor: pointer; text-align: center; font-size: 13px; display: block; flex: 1; }
+        
         .chat-img { max-width: 100%; border-radius: 8px; margin-top: 5px; display: block; }
         .download-lnk { color: #3182ce; font-weight: bold; text-decoration: underline; }
+
+        /* Nút gạt Switch */
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #3182ce; }
+        input:checked + .slider:before { transform: translateX(26px); }
     </style>
 </head>
 <body>
 
-<div class="chat-area">
-    <h3>Cửa Sổ Chat Bảo Mật (Hỗ trợ gửi File)</h3>
-    <div id="box"></div>
-    
-    <div class="input-group">
-        <div class="action-row">
-            <input type="text" id="inp" placeholder="Nhập tin nhắn..." disabled>
-            <button id="btn-send" onclick="sendText()" disabled>Gửi</button>
-        </div>
-        <div class="action-row">
-            <label class="file-label" style="flex: 1;">
-                📁 Chọn hình ảnh / tài liệu để gửi...
-                <input type="file" id="file-inp" onchange="sendFile()" style="display: none;" disabled>
+<div class="container">
+    <div class="config-panel">
+        <h4 style="margin-top: 0;">Cấu hình bảo mật</h4>
+        <textarea id="privateKeyInput" placeholder="Dán Private Key (Base64) vào đây để giải mã..."
+                  style="width: 380px; height: 350px; margin-bottom: 10px; padding: 12px; border: 1px solid #cbd5e0; border-radius: 4px; font-family: monospace; font-size: 12px;"></textarea>
+        
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-weight: bold; color: #4a5568;">Kích hoạt giải mã:</span>
+            <label class="switch">
+                <input type="checkbox" id="decryptToggle" onchange="handleToggle()">
+                <span class="slider"></span>
             </label>
+        </div>
+    </div>
+
+    <div class="chat-area">
+        <h3>Cửa Sổ Chat Bảo Mật</h3>
+        <div id="box"></div>
+        
+        <div class="input-group">
+            <div class="row">
+                <input type="text" id="inp" placeholder="Nhập tin nhắn..." disabled>
+                <button id="btn-send" onclick="sendText()" disabled>Gửi</button>
+            </div>
+            <div class="row">
+                <label class="file-label">
+                    📁 Chọn hình ảnh / tài liệu để gửi...
+                    <input type="file" id="file-inp" onchange="sendFile()" style="display: none;" disabled>
+                </label>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-    const ws = new WebSocket("wss://straticulate-obtusely-ernesto.ngrok-free.dev/nghiaws");
     const box = document.getElementById('box');
     const inp = document.getElementById('inp');
     const btnSend = document.getElementById('btn-send');
     const fileInp = document.getElementById('file-inp');
 
+    let privateKeyObj = null; 
+    let lastSentText = null;
+
+    // Khởi tạo kết nối WebSocket thuần
+    const ws = new WebSocket("wss://straticulate-obtusely-ernesto.ngrok-free.dev/nghiaws");
+
     showMsg("Hệ thống: Đang kết nối server qua Ngrok...", 'incoming');
 
     ws.onopen = () => {
-        showMsg("Hệ thống: Đã thông suốt! Bạn có thể nhắn tin hoặc gửi file.", 'incoming');
+        showMsg("Hệ thống: Kết nối thông suốt! Hãy dán Private Key để sẵn sàng giải mã.", 'incoming');
         inp.disabled = false;
         btnSend.disabled = false;
         fileInp.disabled = false;
     };
 
-    ws.onmessage = (event) => {
-        let res = JSON.parse(event.data);
-        if (res.type === "FILE") {
-            showFileMsg(res.text, res.name, 'incoming');
-        } else {
-            showMsg(res.text, 'incoming');
+    ws.onmessage = async (event) => {
+        let data = JSON.parse(event.data);
+
+        // Hỗ trợ tin nhắn thô không mã hóa từ hệ thống (ví dụ: PayOS thông báo thành công)
+        if (data.type === "PAYMENT_SUCCESS") {
+            showMsg("💳 " + data.text, 'incoming');
+            return;
+        }
+
+        // Xử lý gói tin bảo mật E2EE (Có cipherText)
+        if (data.cipherText) {
+            const isDecryptEnabled = document.getElementById('decryptToggle').checked;
+
+            if (isDecryptEnabled && privateKeyObj) {
+                try {
+                    const plainText = await decryptMessage(data.cipherText, data.encryptedAesKey, data.iv);
+                    if (plainText === lastSentText) { lastSentText = null; return; }
+                    
+                    if (data.type === "FILE") {
+                        showFileMsg(plainText, data.name, 'incoming', data);
+                    } else {
+                        showMsg("🔓 " + plainText, 'incoming', data);
+                    }
+                } catch(e) {
+                    showEncryptedPlaceholder(data, 'incoming');
+                }
+            } else {
+                showEncryptedPlaceholder(data, 'incoming');
+            }
         }
     };
 
-    ws.onerror = () => showMsg("Hệ thống: Lỗi kết nối, kiểm tra lại Ngrok!", 'incoming');
     ws.onclose = () => showMsg("Hệ thống: Mất kết nối.", 'incoming');
 
-    // 1. Xử lý gửi tin nhắn Text
+    // Gửi tin nhắn TEXT
     function sendText() {
         let text = inp.value.trim();
-        if(!text) return;
-        
+        if (!text) return;
+        lastSentText = text;
         showMsg(text, 'outgoing');
         ws.send(JSON.stringify({ type: "TEXT", data: text }));
         inp.value = '';
     }
 
-    // 2. Xử lý đọc file và biến đổi sang Base64 để gửi đi
+    // Gửi FILE
     function sendFile() {
         const file = fileInp.files[0];
         if (!file) return;
 
-        showMsg(`Đang gửi file: ${file.name}...`, 'outgoing');
-
         const reader = new FileReader();
         reader.onload = function(e) {
-            const base64Data = e.target.result; // Định dạng: data:image/png;base64,iVBORw...
+            const base64Data = e.target.result;
+            showFileMsg(base64Data, file.name, 'outgoing'); // Người gửi xem trực tiếp luôn không cần giải mã
             
-            // Hiển thị ngay trên màn hình người gửi
-            showFileMsg(base64Data, file.name, 'outgoing');
-            
-            // Bắn chuỗi Base64 này lên server xử lý mã hóa
             ws.send(JSON.stringify({
                 type: "FILE",
                 name: file.name,
                 data: base64Data
             }));
-            fileInp.value = ''; // Reset input file
+            fileInp.value = '';
         };
         reader.readAsDataURL(file);
     }
 
-    // Hàm hiển thị tin nhắn chữ thường
-    function showMsg(text, type) {
+    // Hiển thị text thường
+    function showMsg(text, type, cryptoData = null) {
         let d = document.createElement('div');
         d.className = `msg ${type}`;
         d.innerText = text;
+        if (type === 'incoming' && cryptoData) {
+            d.setAttribute('data-crypto', JSON.stringify(cryptoData));
+            d.classList.add('encrypted-msg');
+        }
         box.appendChild(d);
         box.scrollTop = box.scrollHeight;
     }
 
-    // Hàm hiển thị tin nhắn chứa File (Ảnh hoặc Link tải)
-    function showFileMsg(base64Data, fileName, type) {
+    // Hiển thị file dạng ảnh hoặc link tải
+    function showFileMsg(base64Data, fileName, type, cryptoData = null) {
         let d = document.createElement('div');
         d.className = `msg ${type}`;
+        if (type === 'incoming' && cryptoData) {
+            d.setAttribute('data-crypto', JSON.stringify(cryptoData));
+            d.classList.add('encrypted-msg');
+        }
 
-        // Nếu là file ảnh thì hiển thị trực tiếp ảnh ra màn hình chat
         if (base64Data.startsWith("data:image/")) {
             let img = document.createElement('img');
             img.src = base64Data;
             img.className = "chat-img";
-            d.appendChild(document.createTextNode(`${type === 'outgoing' ? 'Bạn' : 'Đối phương'} đã gửi ảnh:`));
+            d.appendChild(document.createTextNode(type === 'outgoing' ? 'Bạn đã gửi ảnh:' : 'Đối phương đã gửi ảnh:'));
             d.appendChild(img);
         } else {
-            // Nếu là tài liệu (pdf, docx, zip...) thì tạo link tải về
             let lnk = document.createElement('a');
             lnk.href = base64Data;
             lnk.download = fileName;
@@ -132,9 +189,120 @@
             lnk.innerText = `📥 Tải file: ${fileName}`;
             d.appendChild(lnk);
         }
-
         box.appendChild(d);
         box.scrollTop = box.scrollHeight;
+    }
+
+    // Hiển thị trạng thái Khóa khi chưa kích hoạt giải mã
+    function showEncryptedPlaceholder(data, type) {
+        let shortCipher = data.cipherText.substring(0, 15) + "...";
+        let label = data.type === "FILE" ? `🔒 [File mã hóa]: ${shortCipher}` : `🔒 ${shortCipher}`;
+        showMsg(label, type, data);
+    }
+
+    // Hàm quét giải mã/mã hóa động toàn bộ lịch sử chat khi gạt nút
+    async function toggleAllMessages() {
+        const isDecryptEnabled = document.getElementById('decryptToggle').checked;
+        const messages = document.querySelectorAll('.msg.incoming.encrypted-msg');
+
+        for (let msg of messages) {
+            const rawData = msg.getAttribute('data-crypto');
+            if (!rawData) continue;
+            const data = JSON.parse(rawData);
+
+            msg.innerHTML = ""; // Xóa sạch nội dung cũ để render lại
+
+            if (isDecryptEnabled && privateKeyObj) {
+                try {
+                    const plainText = await decryptMessage(data.cipherText, data.encryptedAesKey, data.iv);
+                    if (data.type === "FILE") {
+                        if (plainText.startsWith("data:image/")) {
+                            let img = document.createElement('img'); img.src = plainText; img.className = "chat-img";
+                            msg.appendChild(document.createTextNode("Đối phương đã gửi ảnh:")); msg.appendChild(img);
+                        } else {
+                            let lnk = document.createElement('a'); lnk.href = plainText; lnk.download = data.name;
+                            lnk.className = "download-lnk"; lnk.innerText = `📥 Tải file: ${data.name}`;
+                            msg.appendChild(lnk);
+                        }
+                    } else {
+                        msg.innerText = "🔓 " + plainText;
+                    }
+                } catch (e) {
+                    msg.innerText = "❌ Lỗi: Khóa sai hoặc bị hỏng";
+                }
+            } else {
+                let shortCipher = data.cipherText.substring(0, 15) + "...";
+                msg.innerText = data.type === "FILE" ? `🔒 [File mã hóa]: ${shortCipher}` : `🔒 ${shortCipher}`;
+            }
+        }
+    }
+
+    // Sự kiện gạt công tắc
+    async function handleToggle() {
+        const isDecryptEnabled = document.getElementById('decryptToggle').checked;
+        const keyStr = document.getElementById('privateKeyInput').value.trim();
+
+        if (isDecryptEnabled) {
+            if (!keyStr) {
+                alert("⚠️ Vui lòng dán Private Key vào khung văn bản trước!");
+                document.getElementById('decryptToggle').checked = false;
+                privateKeyObj = null;
+                return;
+            }
+            try {
+                const keyBuffer = base64ToBytes(keyStr);
+                privateKeyObj = await crypto.subtle.importKey(
+                    "pkcs8",
+                    keyBuffer,
+                    { name: "RSA-OAEP", hash: "SHA-256" },
+                    false,
+                    ["decrypt"]
+                );
+                await toggleAllMessages();
+            } catch (err) {
+                alert("❌ Khóa không đúng cấu trúc PKCS#8!");
+                privateKeyObj = null;
+                document.getElementById('decryptToggle').checked = false;
+                await toggleAllMessages();
+            }
+        } else {
+            privateKeyObj = null;
+            await toggleAllMessages();
+        }
+    }
+
+    // Giải mã kết hợp RSA + AES
+    async function decryptMessage(cipherText, encryptedAesKey, iv) {
+        const encryptedKeyBuffer = base64ToBytes(encryptedAesKey);
+        const aesKeyBytes = await crypto.subtle.decrypt(
+            { name: "RSA-OAEP" }, 
+            privateKeyObj, 
+            encryptedKeyBuffer
+        );
+
+        const aesKey = await crypto.subtle.importKey(
+            "raw", aesKeyBytes, { name: "AES-GCM" }, false, ["decrypt"]
+        );
+
+        const ivBuffer = base64ToBytes(iv);
+        const cipherBuffer = base64ToBytes(cipherText);
+        
+        const plainTextBytes = await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: ivBuffer, tagLength: 128 },
+            aesKey,
+            cipherBuffer
+        );
+        return new TextDecoder().decode(plainTextBytes);
+    }
+
+    function base64ToBytes(base64) {
+        const cleanBase64 = base64.replace(/[^A-Za-z0-9+/=]/g, '');
+        const binary = atob(cleanBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
     }
 </script>
 </body>
